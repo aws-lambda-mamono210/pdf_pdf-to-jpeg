@@ -1,0 +1,131 @@
+---
+version: '2.1'
+
+executors:
+  bandit:
+    docker:
+      - image: 'public.ecr.aws/lambda/python:3.9'
+  black:
+    docker:
+      - image: 'public.ecr.aws/lambda/python:3.9'
+  flake8:
+    docker:
+      - image: 'public.ecr.aws/lambda/python:3.9'
+  isort:
+    docker:
+      - image: 'public.ecr.aws/lambda/python:3.9'
+  sam-machine:
+    machine:
+      image: 'ubuntu-2204:2023.10.1'
+    resource_class: 'medium'
+  trailing-whitespace:
+    docker:
+      - image: 'ghcr.io/docker-images-mamono210/circleci-executors/trailing-whitespace:latest'
+    resource_class: 'small'
+
+orbs:
+  aws-cli: 'circleci/aws-cli@5.2.0'
+  sam: 'circleci/aws-sam-serverless@6.1.0'
+  yamllint: 'orbss/yamllint@0.0.4'
+
+jobs:
+  bandit:
+    executor: 'bandit'
+    steps:
+      - checkout
+      - run:
+          name: Install bandit
+          command: pip3 install bandit[toml] --user
+      - run:
+          name: Execute bandit
+          command: bandit -c pyproject.toml -r .
+          environment:
+            PATH: "$PATH:/root/.local/bin"
+  black:
+    executor: 'black'
+    steps:
+      - checkout
+      - run:
+          name: Install black
+          command: pip3 install black --user
+      - run:
+          name: Run black check
+          command: black --check --diff .
+          environment:
+            PATH: "$PATH:/root/.local/bin"
+  flake8:
+    executor: 'flake8'
+    steps:
+      - checkout
+      - run:
+          name: Install flake8
+          command: pip3 install flake8 flake8-docstrings flake8-pyproject --user
+      - run:
+          name: Execute flake8
+          command: flake8
+          environment:
+            PATH: "$PATH:/root/.local/bin"
+  isort:
+    executor: 'isort'
+    steps:
+      - checkout
+      - run:
+          name: Install isort
+          command: pip3 install isort --user
+      - run:
+          name: Execute isort
+          command: isort --check-only --diff .
+          environment:
+            PATH: "$PATH:/root/.local/bin"
+  sam-build:
+    executor: 'sam-machine'
+    parameters:
+      aws-resource-name:
+        type: 'string'
+    steps:
+      - checkout
+      - aws-cli/setup:
+          profile_name: 'default'
+          role_arn: '${AWS_ROLE_ARN}'
+          role_session_name: '<< parameters.aws-resource-name >>'
+          session_duration: '900'
+      - sam/install
+      - sam/build:
+          template: 'template.yaml'
+          use_container: true
+      - sam/deploy:
+          arguments: '--no-confirm-changeset'
+          stack_name: 'shitadan-participant-list'
+  yamllint:
+    executor: 'yamllint/default'
+    steps:
+      - checkout
+      - yamllint/execute
+  trailing-whitespace:
+    executor: 'trailing-whitespace'
+    steps:
+      - checkout
+      - run:
+          name: 'Execute trailing-whitespace'
+          command: 'trailing-whitespace'
+
+workflows:
+  version: '2.1'
+  build:
+    jobs:
+      - bandit
+      - black
+      - flake8
+      - isort
+      - yamllint
+      - trailing-whitespace
+      - sam-build:
+          aws-resource-name: 'lambda_shitadan_participant-list_sam'
+          context: 'aws-oidc'
+          requires:
+            - bandit
+            - black
+            - flake8
+            - isort
+            - yamllint
+            - trailing-whitespace
