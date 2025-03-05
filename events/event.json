@@ -1,5 +1,5 @@
 {
   "pdf_prefix": "api/receipts/r6/pdf/",
-  "upload_prefix": "api/receipts/r6//pdf-participant-list/",
-  "contnet_type": "application/pdf"
+  "upload_prefix": "api/receipts/r6/jpeg/",
+  "contnet_type": "image/jpeg"
 }
