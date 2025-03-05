@@ -1,26 +1,38 @@
-"""AWS Lambda 関数: S3 内の指定フォルダにある PDF ファイルをすべて処理し、各ページを JPEG に変換して、それぞれの JPEG ファイルを指定の S3 パスへアップロードする.
+"""app.lambda_function モジュール.
 
-This module processes all PDF files in a specified S3 folder, converts each page to a JPEG image,
-and uploads each JPEG file directly to S3.
+このモジュールは、S3 内の指定フォルダにある PDF ファイルをダウンロードし、
+各ページを JPEG に変換してから S3 にアップロードする AWS Lambda 関数を実装しています。
+
+主な処理の流れ:
+1. 指定の S3 バケットから PDF ファイルをダウンロード
+2. PDF の各ページを JPEG に変換（convert_pdf_to_jpeg 関数を利用）
+3. 変換した JPEG ファイルを S3 にアップロード
 """
 
 import os
 import tempfile
 
-import fitz  # PyMuPDF
-from PIL import Image
 from s3_utils import download_objects_from_s3, upload_file_to_s3
+
+from app.pdf_to_jpeg import convert_pdf_to_jpeg
 
 
 def lambda_handler(event, context):
-    """Lambda function to convert PDF pages to JPEG and upload them to S3.
+    """AWS Lambda ハンドラー.
+
+    この関数は、S3 から PDF ファイルをダウンロードし、各ページを JPEG に変換してから、
+    指定された S3 パスにアップロードします。
 
     Args:
-        event (dict): Lambda event containing configuration parameters.
-        context (object): Lambda runtime context.
+        event (dict): Lambda イベント情報。以下のパラメータを含む:
+            - pdf_prefix (str): PDF ファイルが格納されている S3 のプレフィックス。例: "api/receipts/r6/pdf/"
+            - local_dir (str, optional): 一時的にファイルを保存するローカルディレクトリのパス。
+            - upload_prefix (str): JPEG ファイルのアップロード先 S3 のプレフィックス。例: "api/receipts/r6/jpeg"
+            - content_type (str): アップロードする JPEG ファイルの MIME タイプ。例: "image/jpeg"
+        context (object): AWS Lambda のランタイムコンテキスト。
 
     Returns:
-        dict: Response containing status code and message.
+        dict: ステータスコードと処理結果のメッセージを含むレスポンスオブジェクト。
     """
     # S3 バケットと各種パラメータの設定
     source_bucket = "shitadan"
@@ -40,33 +52,12 @@ def lambda_handler(event, context):
     # 2. 各 PDF を処理し、各ページを JPEG に変換して S3 にアップロード
     for file_path in downloaded_files:
         try:
-            # PDF の内容を読み込み
-            with open(file_path, "rb") as f:
-                pdf_data = f.read()
+            # PDF を JPEG に変換する（変換後の JPEG ファイルのパスリストを受け取る）
+            jpeg_files = convert_pdf_to_jpeg(file_path, local_dir)
 
-            # バイト列から PDF ドキュメントをオープン
-            pdf_doc = fitz.open(stream=pdf_data, filetype="pdf")
-
-            # 高解像度設定
-            dpi = 300.0
-            scale = dpi / 72.0
-            mat = fitz.Matrix(scale, scale)
-
-            # PDF のファイル名（拡張子除去）
-            base_filename = os.path.splitext(os.path.basename(file_path))[0]
-
-            # 各ページごとに JPEG 画像に変換してアップロード
-            for page_number, page in enumerate(pdf_doc, start=1):
-                # ページを画像化
-                pix = page.get_pixmap(matrix=mat, alpha=False)
-                img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-
-                # JPEG に変換してローカルファイルに保存
-                jpeg_filename = f"{base_filename}_page{page_number}.jpg"
-                jpeg_local_path = os.path.join(local_dir, jpeg_filename)
-                img.save(jpeg_local_path, format="JPEG", quality=95)
-
-                # S3 キーの作成（余計なスラッシュが入らないように）
+            # 変換した各 JPEG ファイルを S3 にアップロード
+            for jpeg_local_path in jpeg_files:
+                jpeg_filename = os.path.basename(jpeg_local_path)
                 upload_key = f"{upload_prefix.rstrip('/')}/{jpeg_filename}"
                 upload_file_to_s3(
                     jpeg_local_path, source_bucket, upload_key, content_type

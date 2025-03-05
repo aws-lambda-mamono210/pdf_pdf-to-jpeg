@@ -14,6 +14,9 @@ executors:
   isort:
     docker:
       - image: 'public.ecr.aws/lambda/python:3.9'
+  pytest:
+    docker:
+      - image: 'public.ecr.aws/lambda/python:3.9'
   sam-machine:
     machine:
       image: 'ubuntu-2204:2023.10.1'
@@ -77,6 +80,38 @@ jobs:
           command: isort --check-only --diff .
           environment:
             PATH: "$PATH:/root/.local/bin"
+  pytest:
+    executor: 'pytest'
+    parameters:
+      aws-resource-name:
+        type: 'string'
+    steps:
+      - checkout
+      - run:
+          name: Install wget and unzip
+          command: |
+            yum install -y wget unzip
+      - aws-cli/setup:
+          profile_name: 'default'
+          role_arn: '${AWS_ROLE_ARN}'
+          role_session_name: '<< parameters.aws-resource-name >>'
+          session_duration: '900'
+      - run:
+          name: Install wget and unzip
+          command: |
+            yum install -y wget unzip
+      - run:
+          name: Install requires
+          command: |
+            bash tests/unit/layer_setup/download_layer.sh
+            pip3 install -r requirements.txt --user
+            pip3 install -r tests/requirements.txt --user
+      - run:
+          name: Execute unit test
+          command: |
+            export PYTHONPATH=$(pwd)
+            export PATH=$HOME/.local/bin:'$PATH'
+            pytest tests/unit/
   sam-build:
     executor: 'sam-machine'
     parameters:
@@ -119,8 +154,8 @@ workflows:
       - isort
       - yamllint
       - trailing-whitespace
-      - sam-build:
-          aws-resource-name: 'lambda_shitadan_participant-list_sam'
+      - pytest:
+          aws-resource-name: 'lambda_pdf_pdf-to-jpeg'
           context: 'aws-oidc'
           requires:
             - bandit
@@ -129,3 +164,8 @@ workflows:
             - isort
             - yamllint
             - trailing-whitespace
+      - sam-build:
+          aws-resource-name: 'lambda_shitadan_participant-list_sam'
+          context: 'aws-oidc'
+          requires:
+            - pytest
