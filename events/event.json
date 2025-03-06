@@ -1,5 +1,6 @@
 {
   "pdf_prefix": "api/receipts/r6/pdf/",
   "upload_prefix": "api/receipts/r6/jpeg/",
-  "contnet_type": "image/jpeg"
+  "contnet_type": "image/jpeg",
+  "grayscale": true
 }

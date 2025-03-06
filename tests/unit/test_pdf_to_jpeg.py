@@ -42,6 +42,18 @@ class TestConvertPdfToJpeg(unittest.TestCase):
         with Image.open(jpeg_file) as img:
             self.assertEqual(img.format, "JPEG")
 
+    def test_convert_pdf_to_jpeg_grayscale(self):
+        """Test successful PDF to JPEG conversion with grayscale option enabled."""
+        output_dir = self.temp_dir.name
+        jpeg_files = convert_pdf_to_jpeg(self.test_pdf_path, output_dir, grayscale=True)
+        self.assertEqual(len(jpeg_files), 1)
+        jpeg_file = jpeg_files[0]
+        self.assertTrue(os.path.exists(jpeg_file))
+        with Image.open(jpeg_file) as img:
+            self.assertEqual(img.format, "JPEG")
+            # グレースケール変換の場合はモードが "L" であることを確認
+            self.assertEqual(img.mode, "L")
+
     def test_convert_pdf_to_jpeg_invalid_file(self):
         """Test conversion with invalid file returns empty list."""
         invalid_pdf_path = os.path.join(self.temp_dir.name, "nonexistent.pdf")

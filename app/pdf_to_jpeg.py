@@ -10,7 +10,9 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 
-def convert_pdf_to_jpeg(pdf_file_path, output_dir, dpi=300, quality=95):
+def convert_pdf_to_jpeg(
+    pdf_file_path, output_dir, dpi=300, quality=95, grayscale=False
+):
     """指定されたPDFファイルの各ページをJPEGに変換し、ローカルディレクトリに保存します.
 
     Args:
@@ -18,6 +20,7 @@ def convert_pdf_to_jpeg(pdf_file_path, output_dir, dpi=300, quality=95):
         output_dir (str): 生成したJPEGファイルの保存先ディレクトリ
         dpi (int, optional): 画像解像度(DPI)。デフォルトは300
         quality (int, optional): JPEGの品質（0～100）。デフォルトは95
+        grayscale (bool, optional): Trueの場合、画像をグレースケールに変換して保存。デフォルトはFalse
 
     Returns:
         list: 生成されたJPEGファイルのパスのリスト
@@ -42,6 +45,10 @@ def convert_pdf_to_jpeg(pdf_file_path, output_dir, dpi=300, quality=95):
         for page_number, page in enumerate(pdf_doc, start=1):
             pix = page.get_pixmap(matrix=mat, alpha=False)
             img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+            # grayscaleがTrueの場合、画像をグレースケールに変換
+            if grayscale:
+                img = img.convert("L")
 
             jpeg_filename = f"{base_filename}_page{page_number}.jpg"
             jpeg_local_path = os.path.join(output_dir, jpeg_filename)

@@ -29,6 +29,7 @@ def lambda_handler(event, context):
             - local_dir (str, optional): 一時的にファイルを保存するローカルディレクトリのパス。
             - upload_prefix (str): JPEG ファイルのアップロード先 S3 のプレフィックス。例: "api/receipts/r6/jpeg"
             - content_type (str): アップロードする JPEG ファイルの MIME タイプ。例: "image/jpeg"
+            - grayscale (bool, optional): グレースケール変換を行う場合は True を指定（デフォルトは False）
         context (object): AWS Lambda のランタイムコンテキスト。
 
     Returns:
@@ -44,6 +45,10 @@ def lambda_handler(event, context):
     upload_prefix = event.get("upload_prefix", "api/receipts/r6/jpeg")
     content_type = event.get("content_type", "image/jpeg")
 
+    # グレースケール変換の有無をイベントから取得（指定がなければ False）
+    grayscale = event.get("grayscale", False)
+    print(f"Grayscale conversion is set to: {grayscale}")
+
     # 1. S3 から PDF をダウンロード
     downloaded_files = download_objects_from_s3(source_bucket, pdf_prefix, local_dir)
     if not downloaded_files:
@@ -53,7 +58,7 @@ def lambda_handler(event, context):
     for file_path in downloaded_files:
         try:
             # PDF を JPEG に変換する（変換後の JPEG ファイルのパスリストを受け取る）
-            jpeg_files = convert_pdf_to_jpeg(file_path, local_dir)
+            jpeg_files = convert_pdf_to_jpeg(file_path, local_dir, grayscale=grayscale)
 
             # 変換した各 JPEG ファイルを S3 にアップロード
             for jpeg_local_path in jpeg_files:
