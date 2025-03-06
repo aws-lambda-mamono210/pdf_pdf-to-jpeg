@@ -117,6 +117,8 @@ jobs:
     parameters:
       aws-resource-name:
         type: 'string'
+      stack-name:
+        type: 'string'
     steps:
       - checkout
       - aws-cli/setup:
@@ -130,7 +132,7 @@ jobs:
           use_container: true
       - sam/deploy:
           arguments: '--no-confirm-changeset'
-          stack_name: 'shitadan-participant-list'
+          stack_name: '<< parameters.stack-name >>'
   yamllint:
     executor: 'yamllint/default'
     steps:
@@ -166,6 +168,7 @@ workflows:
             - trailing-whitespace
       - sam-build:
           aws-resource-name: 'lambda_shitadan_participant-list_sam'
+          stack-name: 'lambda-function-pdf-pdf-to-jpeg'
           context: 'aws-oidc'
           requires:
             - pytest

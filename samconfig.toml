@@ -3,7 +3,7 @@
 version = 0.1
 
 [default.global.parameters]
-stack_name = "pdf-pdf-to-jpeg"
+stack_name = "lambda-function-pdf-pdf-to-jpeg"
 
 [default.build.parameters]
 cached = true
@@ -16,8 +16,8 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-stack_name = "shitadan-participant-list"
-s3_prefix = "shitadan-participant-list"
+stack_name = "lambda-function-pdf-pdf-to-jpeg"
+s3_prefix = "lambda-function-pdf-pdf-to-jpeg"
 region = "ap-northeast-1"
 image_repositories = []
 
