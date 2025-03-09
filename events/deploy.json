@@ -1,0 +1,7 @@
+{
+  "pdf_prefix": "api/receipts/r6/pdf/",
+  "upload_prefix": "api/receipts/r6/jpeg/",
+  "contnet_type": "image/jpeg",
+  "grayscale": true,
+  "regex_pattern": "7([0-9][0-9]).pdf$"
+}

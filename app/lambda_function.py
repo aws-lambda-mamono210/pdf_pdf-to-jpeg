@@ -12,13 +12,17 @@
 import os
 import tempfile
 
-from s3_utils import download_objects_from_s3, upload_file_to_s3
+from s3_utils import (
+    download_objects_from_s3,
+    download_objects_from_s3_with_regex,
+    upload_file_to_s3,
+)
 
 from app.pdf_to_jpeg import convert_pdf_to_jpeg
 
 
 def lambda_handler(event, context):
-    """AWS Lambda ハンドラー.
+    r"""AWS Lambda ハンドラー.
 
     この関数は、S3 から PDF ファイルをダウンロードし、各ページを JPEG に変換してから、
     指定された S3 パスにアップロードします。
@@ -27,6 +31,7 @@ def lambda_handler(event, context):
         event (dict): Lambda イベント情報。以下のパラメータを含む:
             - pdf_prefix (str): PDF ファイルが格納されている S3 のプレフィックス。例: "api/receipts/r6/pdf/"
             - local_dir (str, optional): 一時的にファイルを保存するローカルディレクトリのパス。
+            - regex_pattern (str): ダウンロードするファイル名の正規表現パターン。例: r".*\.pdf"
             - upload_prefix (str): JPEG ファイルのアップロード先 S3 のプレフィックス。例: "api/receipts/r6/jpeg"
             - content_type (str): アップロードする JPEG ファイルの MIME タイプ。例: "image/jpeg"
             - grayscale (bool, optional): グレースケール変換を行う場合は True を指定（デフォルトは False）
@@ -37,12 +42,13 @@ def lambda_handler(event, context):
     """
     # S3 バケットと各種パラメータの設定
     source_bucket = "shitadan"
-    pdf_prefix = event.get("pdf_prefix", "api/receipts/r6/pdf/")
+    pdf_prefix = event.get("pdf_prefix", "")
+    regex_pattern = event.get("regex_pattern", "")
     local_dir = event.get("local_dir", tempfile.mkdtemp(prefix="pdf_"))
     print(f"Using local directory: {local_dir}")
 
     # アップロード先の設定
-    upload_prefix = event.get("upload_prefix", "api/receipts/r6/jpeg")
+    upload_prefix = event.get("upload_prefix", "")
     content_type = event.get("content_type", "image/jpeg")
 
     # グレースケール変換の有無をイベントから取得（指定がなければ False）
@@ -50,9 +56,21 @@ def lambda_handler(event, context):
     print(f"Grayscale conversion is set to: {grayscale}")
 
     # 1. S3 から PDF をダウンロード
-    downloaded_files = download_objects_from_s3(source_bucket, pdf_prefix, local_dir)
-    if not downloaded_files:
-        return {"statusCode": 200, "body": f"No PDFs found under {pdf_prefix}"}
+    if not regex_pattern:
+        downloaded_files = download_objects_from_s3(
+            source_bucket, pdf_prefix, local_dir
+        )
+        if not downloaded_files:
+            return {"statusCode": 200, "body": f"No PDFs found under {pdf_prefix}"}
+    else:
+        downloaded_files = download_objects_from_s3_with_regex(
+            source_bucket, pdf_prefix, regex_pattern, local_dir
+        )
+        if not downloaded_files:
+            return {
+                "statusCode": 200,
+                "body": f"No PDFs found under {pdf_prefix} matching {regex_pattern}",
+            }
 
     # 2. 各 PDF を処理し、各ページを JPEG に変換して S3 にアップロード
     for file_path in downloaded_files:
