@@ -19,8 +19,3 @@ Resources:
             BucketName: 'shitadan'
         - S3WritePolicy:
             BucketName: 'shitadan'
-      Environment:
-        Variables:
-          SOURCE_BUCKET: "shitadan"
-          PDF_PREFIX: "aws/lambda/pdf/pdf-to-jpeg/pdf"
-          JPEG_PREFIX: "aws/lambda/pdf/pdf-to-jpeg/jpeg"

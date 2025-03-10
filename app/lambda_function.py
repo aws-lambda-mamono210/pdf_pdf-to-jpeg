@@ -29,6 +29,7 @@ def lambda_handler(event, context):
 
     Args:
         event (dict): Lambda イベント情報。以下のパラメータを含む:
+            - source_bucket (str): PDF ファイルが格納されている S3 バケット名。
             - pdf_prefix (str): PDF ファイルが格納されている S3 のプレフィックス。例: "api/receipts/r6/pdf/"
             - local_dir (str, optional): 一時的にファイルを保存するローカルディレクトリのパス。
             - regex_pattern (str): ダウンロードするファイル名の正規表現パターン。例: r".*\.pdf"
@@ -41,7 +42,7 @@ def lambda_handler(event, context):
         dict: ステータスコードと処理結果のメッセージを含むレスポンスオブジェクト。
     """
     # S3 バケットと各種パラメータの設定
-    source_bucket = "shitadan"
+    source_bucket = event.get("source_bucket", "")
     pdf_prefix = event.get("pdf_prefix", "")
     regex_pattern = event.get("regex_pattern", "")
     local_dir = event.get("local_dir", tempfile.mkdtemp(prefix="pdf_"))
@@ -61,7 +62,10 @@ def lambda_handler(event, context):
             source_bucket, pdf_prefix, local_dir
         )
         if not downloaded_files:
-            return {"statusCode": 200, "body": f"No PDFs found under {pdf_prefix}"}
+            return {
+                "statusCode": 200,
+                "body": f"No PDFs found under s3://{source_bucket}/{pdf_prefix}",
+            }
     else:
         downloaded_files = download_objects_from_s3_with_regex(
             source_bucket, pdf_prefix, regex_pattern, local_dir
@@ -69,7 +73,7 @@ def lambda_handler(event, context):
         if not downloaded_files:
             return {
                 "statusCode": 200,
-                "body": f"No PDFs found under {pdf_prefix} matching {regex_pattern}",
+                "body": f"No PDFs found under s3://{source_bucket}/{pdf_prefix} matching {regex_pattern}",
             }
 
     # 2. 各 PDF を処理し、各ページを JPEG に変換して S3 にアップロード

@@ -1,7 +1,8 @@
 {
-  "pdf_prefix": "api/receipts/r6/pdf/",
-  "upload_prefix": "api/receipts/r6/jpeg/",
+  "source_bucket": "mamono210",
+  "pdf_prefix": "aws-lambda-mamono210/pdf/pdf-to-jpeg/events/test-regex-pattern/pdf/",
+  "regex_pattern": "7([0-9][0-9]).pdf$",
+  "upload_prefix": "aws-lambda-mamono210/pdf/pdf-to-jpeg/events/test-regex-pattern/jpg/",
   "contnet_type": "image/jpeg",
-  "grayscale": true,
-  "regex_pattern": "7([0-9][0-9]).pdf$"
+  "grayscale": true
 }
