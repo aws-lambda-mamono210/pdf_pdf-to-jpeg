@@ -3,6 +3,15 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
 
 Resources:
+  ShitadanApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: ShitadanApi
+      StageName: Prod
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
   PdfPdfToJpegFunction:
     Type: 'AWS::Serverless::Function'
     Properties:
@@ -19,3 +28,14 @@ Resources:
             BucketName: 'shitadan'
         - S3WritePolicy:
             BucketName: 'shitadan'
+      Events:
+        ConvertPdfToJpeg:
+          Type: Api
+          Properties:
+            Path: /convert
+            Method: POST
+            RestApiId: !Ref ShitadanApi
+Outputs:
+  ApiUrl:
+    Description: "API Gateway Invoke URL"
+    Value: !Sub "https://${ShitadanApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/convert"
