@@ -13,6 +13,8 @@ import json
 import os
 import tempfile
 
+import jwt
+import requests
 from s3_utils import (
     download_objects_from_s3,
     download_objects_from_s3_with_regex,
@@ -21,19 +23,92 @@ from s3_utils import (
 
 from app.pdf_to_jpeg import convert_pdf_to_jpeg
 
+COGNITO_USER_POOL_ID = "ap-northeast-1_ysVBcgp4S"
+COGNITO_APP_CLIENT_ID = "556mf49tmcb8hri8qkjc9hfg3r"
+COGNITO_REGION = "ap-northeast-1"
+
+
+def get_cognito_public_keys():
+    """Cognito ユーザープールの公開鍵 (JWKS) を取得する.
+
+    Cognito では JWT トークンの署名を RSA 方式で行っているため、
+    署名の検証には公開鍵が必要となる。この関数は、Cognito の
+    `.well-known/jwks.json` エンドポイントから公開鍵を取得する。
+
+    Returns:
+        list: 公開鍵 (JWKS) のリスト。各要素は JSON 形式の RSA 鍵情報を持つ辞書。
+
+    Raises:
+        requests.RequestException: Cognito からの応答が不正、または通信エラーが発生した場合。
+    """
+    url = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}/.well-known/jwks.json"
+
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        return response.json()["keys"]
+    except requests.Timeout:
+        raise Exception("Timeout error: Unable to fetch Cognito public keys")
+    except requests.RequestException as e:
+        raise Exception(f"Request error: {str(e)}")
+
+
+def verify_token(token):
+    """Cognito の JWT アクセストークンを検証する.
+
+    API Gateway 経由で渡された JWT トークンが正しい形式であり、
+    Cognito によって発行されたものであるかを検証する。
+
+    Args:
+        token (str): 検証対象の JWT トークン。
+
+    Returns:
+        dict: トークンが有効な場合、デコードされた JWT クレーム情報を含む辞書。
+              無効な場合は {"error": "エラーメッセージ"} の形式で返す。
+
+    Raises:
+        jwt.ExpiredSignatureError: トークンの有効期限が切れている場合。
+        jwt.InvalidTokenError: トークンが無効な場合。
+    """
+    try:
+        # Cognito の公開鍵を取得
+        public_keys = get_cognito_public_keys()
+        headers = jwt.get_unverified_header(token)
+        key = next((key for key in public_keys if key["kid"] == headers["kid"]), None)
+
+        if key is None:
+            raise Exception("Invalid token: key not found")
+
+        # 公開鍵で JWT を検証
+        public_key = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key))
+        decoded_token = jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            audience=COGNITO_APP_CLIENT_ID,  # アプリクライアントIDを設定
+        )
+
+        return decoded_token
+
+    except jwt.ExpiredSignatureError:
+        return {"error": "Token has expired"}
+    except jwt.InvalidTokenError:
+        return {"error": "Invalid token"}
+
 
 def lambda_handler(event, context):
-    r"""AWS Lambda ハンドラー.
+    r"""AWS Lambda ハンドラー (Cognito 認証付き).
 
-    この関数は、S3 から PDF ファイルをダウンロードし、各ページを JPEG に変換してから、
-    指定された S3 パスにアップロードします。
+    この関数は、Cognito 認証を実施し、S3 から PDF をダウンロードして JPEG に変換し、
+    変換後の JPEG ファイルを S3 にアップロードする。
 
     **処理の流れ:**
-    1. API Gateway または AWS Lambda のイベントを受け取り、JSON を解析
-    2. 指定の S3 バケットから PDF をダウンロード
-    3. PDF の各ページを JPEG に変換（`convert_pdf_to_jpeg` を使用）
-    4. 変換した JPEG ファイルを S3 にアップロード
-    5. 変換・アップロードしたファイルのリストをレスポンスとして返す
+    1. **認証処理**: API Gateway のリクエストヘッダーに含まれる JWT トークンを Cognito で検証
+    2. **リクエストボディの解析**: JSON を解析し、必要なパラメータを取得
+    3. **S3 から PDF ファイルをダウンロード**
+    4. **PDF の各ページを JPEG に変換**
+    5. **変換した JPEG ファイルを S3 にアップロード**
+    6. **処理結果 (アップロードされたファイルリスト) をレスポンスとして返す**
 
     **リクエスト形式（API Gateway 経由の場合）**
     ```json
@@ -46,17 +121,24 @@ def lambda_handler(event, context):
     }
     ```
 
+    **認証**
+    - `Authorization: Bearer <JWT_TOKEN>` ヘッダーを API リクエストに含める必要がある。
+    - JWT トークンが Cognito によって発行されているかを検証し、不正なトークンの場合 `401 Unauthorized` を返す。
+
     **リクエスト形式（AWS Lambda 直接実行の場合）**
     - `event` は JSON データ（辞書型）として渡される。
+    - Cognito 認証はスキップされる。
 
     Args:
         event (dict): Lambda イベント情報。以下のパラメータを含む:
+            - headers (dict): API Gateway のリクエストヘッダー
+            - Authorization (str, 必須): Cognito JWT トークン (形式: `"Bearer <TOKEN>"`)
             - source_bucket (str): PDF ファイルが格納されている S3 バケット名。例: `"example-bucket"`
             - pdf_prefix (str): PDF ファイルが格納されている S3 のプレフィックス。例: `"api/receipts/r6/pdf/"`
+            - regex_pattern (str, optional): ダウンロードするファイル名の正規表現パターン。例: `r".*\.pdf"`
             - upload_prefix (str): JPEG ファイルのアップロード先 S3 のプレフィックス。例: `"api/receipts/r6/jpeg/"`
             - content_type (str, optional): アップロードする JPEG ファイルの MIME タイプ。例: `"image/jpeg"`
             - grayscale (bool, optional): グレースケール変換を行う場合は `True` を指定（デフォルトは `False`）。
-            - regex_pattern (str, optional): ダウンロードするファイル名の正規表現パターン。例: `r".*\.pdf"`
 
         context (object): AWS Lambda のランタイムコンテキスト。
 
@@ -78,24 +160,55 @@ def lambda_handler(event, context):
         ```
 
         **エラー時のレスポンス**
+        - 認証エラー (`Authorization` ヘッダーがない or トークンが無効)
+        ```json
+        {
+            "statusCode": 401,
+            "body": { "error": "Missing token" }
+        }
+        ```
+        ```json
+        {
+            "statusCode": 401,
+            "body": { "error": "Invalid token" }
+        }
+        ```
+        - 必須パラメータが不足している場合
         ```json
         {
             "statusCode": 400,
             "body": { "error": "Missing required parameters" }
         }
         ```
+        - JSON の解析エラー
+        ```json
+        {
+            "statusCode": 400,
+            "body": { "error": "Invalid JSON", "details": "Expecting property name enclosed in double quotes" }
+        }
+        ```
     """
     try:
-        # API Gateway 経由の場合: body が JSON 文字列になっている
+        # 1. 認証チェック
+        headers = event.get("headers", {})
+        token = headers.get("Authorization", "").replace("Bearer ", "")
+
+        if not token:
+            return {"statusCode": 401, "body": json.dumps({"error": "Missing token"})}
+
+        decoded_token = verify_token(token)
+        if "error" in decoded_token:
+            return {"statusCode": 401, "body": json.dumps(decoded_token)}
+
+        # 2. API Gateway 経由の場合: body が JSON 文字列になっている
         if "body" in event and isinstance(event["body"], str):
             body = json.loads(event["body"])
         else:
-            # sam local invoke や直接実行の場合
             body = event
 
         print("Parsed body:", body)
 
-        # 必須パラメータの取得
+        # 3. 必須パラメータの取得
         source_bucket = body.get("source_bucket", "")
         pdf_prefix = body.get("pdf_prefix", "")
         upload_prefix = body.get("upload_prefix", "")
@@ -103,7 +216,6 @@ def lambda_handler(event, context):
         grayscale = body.get("grayscale", False)
         regex_pattern = body.get("regex_pattern", "")
 
-        # バリデーション（必須パラメータが足りない場合エラー）
         if not source_bucket or not pdf_prefix or not upload_prefix:
             return {
                 "statusCode": 400,
@@ -112,9 +224,8 @@ def lambda_handler(event, context):
 
         local_dir = tempfile.mkdtemp(prefix="pdf_")
         print(f"Using local directory: {local_dir}")
-        print(f"Grayscale conversion is set to: {grayscale}")
 
-        # 1. S3 から PDF をダウンロード
+        # 4. S3 から PDF をダウンロード
         if not regex_pattern:
             downloaded_files = download_objects_from_s3(
                 source_bucket, pdf_prefix, local_dir
@@ -134,16 +245,14 @@ def lambda_handler(event, context):
                 ),
             }
 
-        # 2. 各 PDF を処理し、各ページを JPEG に変換して S3 にアップロード
+        # 5. PDF → JPEG 変換 & アップロード
         uploaded_files = []
         for file_path in downloaded_files:
             try:
-                # PDF を JPEG に変換する（変換後の JPEG ファイルのパスリストを受け取る）
                 jpeg_files = convert_pdf_to_jpeg(
                     file_path, local_dir, grayscale=grayscale
                 )
 
-                # 変換した各 JPEG ファイルを S3 にアップロード
                 for jpeg_local_path in jpeg_files:
                     jpeg_filename = os.path.basename(jpeg_local_path)
                     upload_key = f"{upload_prefix.rstrip('/')}/{jpeg_filename}"
@@ -151,7 +260,6 @@ def lambda_handler(event, context):
                         jpeg_local_path, source_bucket, upload_key, content_type
                     )
                     uploaded_files.append(f"s3://{source_bucket}/{upload_key}")
-                    print(f"Uploaded {jpeg_filename} to {uploaded_files[-1]}")
 
             except Exception as e:
                 print(f"Error processing {file_path}: {e}")

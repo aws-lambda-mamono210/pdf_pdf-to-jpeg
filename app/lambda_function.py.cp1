@@ -1,0 +1,15 @@
+import jwt
+
+def lambda_handler(event, context):
+    try:
+        print(jwt.algorithms.__file__)
+        rsa_algorithm = jwt.algorithms.RSAAlgorithm
+        return {
+            "statusCode": 200,
+            "body": "RSAAlgorithm found"
+        }
+    except AttributeError:
+        return {
+            "statusCode": 500,
+            "body": "RSAAlgorithm not found"
+        }
