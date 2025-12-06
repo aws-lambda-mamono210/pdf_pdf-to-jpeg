@@ -4,19 +4,19 @@ version: '2.1'
 executors:
   bandit:
     docker:
-      - image: 'public.ecr.aws/lambda/python:3.9'
+      - image: 'public.ecr.aws/lambda/python:3.12'
   black:
     docker:
-      - image: 'public.ecr.aws/lambda/python:3.9'
+      - image: 'public.ecr.aws/lambda/python:3.12'
   flake8:
     docker:
-      - image: 'public.ecr.aws/lambda/python:3.9'
+      - image: 'public.ecr.aws/lambda/python:3.12'
   isort:
     docker:
-      - image: 'public.ecr.aws/lambda/python:3.9'
+      - image: 'public.ecr.aws/lambda/python:3.12'
   pytest:
     docker:
-      - image: 'public.ecr.aws/lambda/python:3.9'
+      - image: 'public.ecr.aws/lambda/python:3.12'
   sam-machine:
     machine:
       image: 'ubuntu-2204:2023.10.1'
@@ -90,16 +90,12 @@ jobs:
       - run:
           name: Install wget and unzip
           command: |
-            yum install -y wget unzip
+            dnf install -y wget unzip
       - aws-cli/setup:
           profile_name: 'default'
           role_arn: '${AWS_ROLE_ARN}'
           role_session_name: '<< parameters.aws-resource-name >>'
           session_duration: '900'
-      - run:
-          name: Install wget and unzip
-          command: |
-            yum install -y wget unzip
       - run:
           name: Install requires
           command: |
@@ -130,9 +126,34 @@ jobs:
       - sam/build:
           template: 'template.yaml'
           use_container: true
+      - run:
+          name: "Plan deploy marker"
+          command: |
+            if [ "${CIRCLE_BRANCH}" = "main" ]; then
+              ENV_NAME="PROD-PY-3.12"
+            else
+              ENV_NAME="STAGING-PY-3.12"
+            fi
+
+            circleci run release plan 'Update Python 3.9 to 3.12' \
+              --environment-name="${ENV_NAME}" \
+              --component-name='app' \
+              --target-version='1.0'
       - sam/deploy:
           arguments: '--no-confirm-changeset'
           stack_name: '<< parameters.stack-name >>'
+      - run:
+          name: "Update deploy marker: SUCCESS"
+          command: |
+            circleci run release update 'Update Python 3.9 to 3.12' \
+              --status=SUCCESS
+          when: on_success
+      - run:
+          name: "Update deploy marker: FAILED"
+          command: |
+            circleci run release update 'Update Python 3.9 to 3.12' \
+              --status=FAILED
+          when: on_fail
   yamllint:
     executor: 'yamllint/default'
     steps:
