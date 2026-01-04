@@ -49,7 +49,7 @@ aws apigateway test-invoke-method \
     }'
 
 # curl コマンドの修正
-curl -X POST \
+curl -s -X POST \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
@@ -60,4 +60,4 @@ curl -X POST \
         "content_type": "image/jpeg",
         "grayscale": true
     }' \
-    ${END_POINT}
+    ${END_POINT} | jq .

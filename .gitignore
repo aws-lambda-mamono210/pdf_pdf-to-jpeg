@@ -245,4 +245,8 @@ $RECYCLE.BIN/
 
 */build/*
 
+# Lambda tests
+layers/
+scripts/layer_arn.txt
+
 # End of https://www.gitignore.io/api/osx,linux,python,windows,pycharm,visualstudiocode
