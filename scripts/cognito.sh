@@ -31,7 +31,7 @@ if [[ "$ACCESS_TOKEN" == "null" || -z "$ACCESS_TOKEN" ]]; then
     exit 1
 fi
 
-echo "✅ Access Token: $ACCESS_TOKEN"
+echo "✅ Access Token"
 
 # aws apigateway test-invoke-method の修正
 aws apigateway test-invoke-method \
@@ -42,22 +42,27 @@ aws apigateway test-invoke-method \
     --body '{
         "source_bucket":"shitadan",
         "pdf_prefix":"r6/cash-journal/src/invoices/",
-	"regex_pattern":"7([0-9][0-9])請.pdf$",
+	"regex_pattern":"4([0-1][0-9])請.pdf$",
         "upload_prefix":"r6/cash-journal/img/invoices/",
         "content_type":"image/jpeg",
         "grayscale":true
-    }'
+    }' > /tmp/test_invoke_response.json
 
 # curl コマンドの修正
-curl -s -X POST \
+curl -sS -X POST \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{
         "source_bucket": "shitadan",
         "pdf_prefix": "r6/cash-journal/src/invoices/",
         "upload_prefix": "r6/cash-journal/img/invoices/",
-	"regex_pattern":"7([0-9][0-9])請.pdf$",
+	"regex_pattern":"7([0-1][0-9])請.pdf$",
         "content_type": "image/jpeg",
         "grayscale": true
     }' \
-    ${END_POINT} | jq .
+    ${END_POINT} \
+    >> /tmp/test_invoke_response.json
+
+echo "----- DONE -----"
+
+jq -r 'select(type=="object") | (if .body then (.body | fromjson) else . end) | .uploaded_files[]?' /tmp/test_invoke_response.json
