@@ -115,6 +115,8 @@ jobs:
         type: 'string'
       stack-name:
         type: 'string'
+      layer-arn:
+        type: 'string'
     steps:
       - checkout
       - aws-cli/setup:
@@ -122,23 +124,9 @@ jobs:
           role_arn: '${AWS_ROLE_ARN}'
           role_session_name: '<< parameters.aws-resource-name >>'
           session_duration: '900'
-      - run:
-          name: "Get latest Layer ARN"
-          command: |
-            LAYER_NAME="aws-s3-utils-layer"
-            REGION="ap-northeast-1"
-
-            LAYER_ARN=$(aws lambda list-layer-versions \
-              --layer-name "${LAYER_NAME}" \
-              --region "${REGION}" \
-              --query 'LayerVersions[0].LayerVersionArn' \
-              --output text)
-
-            echo "Latest Layer ARN: ${LAYER_ARN}"
-            echo "export AWS_S3_UTILS_LAYER_ARN=${LAYER_ARN}" >> $BASH_ENV
       - sam/install
       - sam/build:
-          build_arguments: "--parameter-overrides AwsS3UtilsLayerArn=${AWS_S3_UTILS_LAYER_ARN}"
+          build_arguments: "--parameter-overrides AwsS3UtilsLayerArn=<< parameters.layer-arn >>"
           template: 'template.yaml'
           use_container: true
       - run:
@@ -157,7 +145,7 @@ jobs:
       - sam/deploy:
           arguments: >-
             --no-confirm-changeset
-            --parameter-overrides AwsS3UtilsLayerArn=${AWS_S3_UTILS_LAYER_ARN}
+            --parameter-overrides AwsS3UtilsLayerArn=<< parameters.layer-arn >>
           stack_name: '<< parameters.stack-name >>'
       - run:
           name: "Update deploy marker: SUCCESS"
@@ -207,6 +195,7 @@ workflows:
       - sam-build:
           aws-resource-name: 'lambda_shitadan_participant-list_sam'
           stack-name: 'lambda-function-pdf-pdf-to-jpeg'
+          layer-arn: 'arn:aws:lambda:ap-northeast-1:808683561341:layer:aws-s3-utils-layer-prod:1'
           context: 'aws-oidc'
           requires:
             - pytest

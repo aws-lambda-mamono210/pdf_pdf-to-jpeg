@@ -11,7 +11,7 @@ Globals:
 Parameters:
   AwsS3UtilsLayerArn:
     Type: String
-    Description: 'ARN of aws-s3-utils-layer (latest version)'
+    Description: 'ARN of aws-s3-utils-layer'
 
 Resources:
   PdfPdfToJpegFunction:
