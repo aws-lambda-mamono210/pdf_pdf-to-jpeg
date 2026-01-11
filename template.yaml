@@ -12,12 +12,15 @@ Parameters:
   AwsS3UtilsLayerArn:
     Type: String
     Description: 'ARN of aws-s3-utils-layer'
+  FunctionName:
+    Type: String
+    Description: 'Lambda function name (prod/stg)'
 
 Resources:
   PdfPdfToJpegFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: 'pdf-pdf-to-jpeg'
+      FunctionName: !Ref FunctionName
       Handler: 'app.lambda_function.lambda_handler'
       CodeUri: .
       Layers:
@@ -32,3 +35,5 @@ Outputs:
   LambdaFunctionArn:
     Description: "ARN of the Lambda function"
     Value: !GetAtt PdfPdfToJpegFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaFunctionArn"

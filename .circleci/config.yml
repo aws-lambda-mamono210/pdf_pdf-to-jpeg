@@ -113,8 +113,6 @@ jobs:
     parameters:
       aws-resource-name:
         type: 'string'
-      stack-name:
-        type: 'string'
       layer-arn:
         type: 'string'
     steps:
@@ -125,6 +123,18 @@ jobs:
           role_session_name: '<< parameters.aws-resource-name >>'
           session_duration: '900'
       - sam/install
+      - run:
+          name: "Decide environment (stack/function name)"
+          command: |
+            if [ "${CIRCLE_BRANCH}" = "main" ]; then
+              echo 'export STACK_NAME="pdf-pdf-to-jpeg-prod"' >> "$BASH_ENV"
+              echo 'export FUNCTION_NAME="pdf-pdf-to-jpeg-prod"' >> "$BASH_ENV"
+              echo 'export ENV_NAME="PROD-PY-3.12"' >> "$BASH_ENV"
+            else
+              echo 'export STACK_NAME="pdf-pdf-to-jpeg-stg"' >> "$BASH_ENV"
+              echo 'export FUNCTION_NAME="pdf-pdf-to-jpeg-stg"' >> "$BASH_ENV"
+              echo 'export ENV_NAME="STAGING-PY-3.12"' >> "$BASH_ENV"
+            fi
       - sam/build:
           build_arguments: "--parameter-overrides AwsS3UtilsLayerArn=<< parameters.layer-arn >>"
           template: 'template.yaml'
@@ -132,31 +142,27 @@ jobs:
       - run:
           name: "Plan deploy marker"
           command: |
-            if [ "${CIRCLE_BRANCH}" = "main" ]; then
-              ENV_NAME="PROD-PY-3.12"
-            else
-              ENV_NAME="STAGING-PY-3.12"
-            fi
-
-            circleci run release plan 'Update layer injection' \
+            circleci run release plan 'Update release method' \
               --environment-name="${ENV_NAME}" \
               --component-name='app' \
-              --target-version='1.1'
+              --target-version='1'
       - sam/deploy:
+          stack_name: "${STACK_NAME}"
           arguments: >-
             --no-confirm-changeset
-            --parameter-overrides AwsS3UtilsLayerArn=<< parameters.layer-arn >>
-          stack_name: '<< parameters.stack-name >>'
+            --parameter-overrides
+            AwsS3UtilsLayerArn=<< parameters.layer-arn >>
+            FunctionName=${FUNCTION_NAME}
       - run:
           name: "Update deploy marker: SUCCESS"
           command: |
-            circleci run release update 'Update layer injection' \
+            circleci run release update 'Update release method' \
               --status=SUCCESS
           when: on_success
       - run:
           name: "Update deploy marker: FAILED"
           command: |
-            circleci run release update 'Update layer injection' \
+            circleci run release update 'Update release method' \
               --status=FAILED
           when: on_fail
   yamllint:
@@ -194,7 +200,6 @@ workflows:
             - trailing-whitespace
       - sam-build:
           aws-resource-name: 'lambda_shitadan_participant-list_sam'
-          stack-name: 'lambda-function-pdf-pdf-to-jpeg'
           layer-arn: 'arn:aws:lambda:ap-northeast-1:808683561341:layer:aws-s3-utils-layer-prod:1'
           context: 'aws-oidc'
           requires:
