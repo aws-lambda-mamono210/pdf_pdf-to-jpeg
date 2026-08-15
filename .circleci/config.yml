@@ -9,16 +9,13 @@ executors:
     machine:
       image: 'ubuntu-2204:2023.10.1'
     resource_class: 'medium'
-  trailing-whitespace:
-    docker:
-      - image: 'ghcr.io/docker-images-mamono210/circleci-executors/trailing-whitespace:latest'
-    resource_class: 'small'
 
 orbs:
   aws-cli: 'circleci/aws-cli@5.2.0'
   bandit: 'orbss/bandit@1.0.0'
   ruff: 'orbss/ruff@0.0.1'
   sam: 'circleci/aws-sam-serverless@6.1.0'
+  trailing-whitespace: 'orbss/trailing-whitespace@1.0.0'
   yamllint: 'orbss/yamllint@0.0.4'
 
 jobs:
@@ -165,12 +162,10 @@ jobs:
       - checkout
       - yamllint/execute
   trailing-whitespace:
-    executor: 'trailing-whitespace'
+    executor: 'trailing-whitespace/default'
     steps:
       - checkout
-      - run:
-          name: 'Execute trailing-whitespace'
-          command: 'trailing-whitespace'
+      - trailing-whitespace/execute
 
 workflows:
   version: '2.1'
