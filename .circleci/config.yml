@@ -117,24 +117,47 @@ jobs:
         type: 'string'
     steps:
       - checkout
+      - run:
+          name: "Decide environment and release version"
+          command: |
+            if [ -n "${CIRCLE_TAG:-}" ]; then
+              if ! [[ "${CIRCLE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "ERROR: unsupported release tag: ${CIRCLE_TAG}"
+                exit 1
+              fi
+
+              RELEASE_VERSION="${CIRCLE_TAG#v}"
+              echo 'export STACK_NAME="pdf-pdf-to-jpeg-prod"' >> "$BASH_ENV"
+              echo 'export FUNCTION_NAME="pdf-pdf-to-jpeg-prod"' >> "$BASH_ENV"
+              echo 'export ENV_NAME="PROD-PY-3.12"' >> "$BASH_ENV"
+            else
+              RELEASE_VERSION="dev-${CIRCLE_SHA1:0:8}"
+              echo 'export STACK_NAME="pdf-pdf-to-jpeg-stg"' >> "$BASH_ENV"
+              echo 'export FUNCTION_NAME="pdf-pdf-to-jpeg-stg"' >> "$BASH_ENV"
+              echo 'export ENV_NAME="STAGING-PY-3.12"' >> "$BASH_ENV"
+            fi
+
+            echo "export RELEASE_VERSION=${RELEASE_VERSION}" >> "$BASH_ENV"
+            echo "export GIT_REVISION=${CIRCLE_SHA1}" >> "$BASH_ENV"
+      - run:
+          name: "Verify release tag is on main"
+          command: |
+            if [ -z "${CIRCLE_TAG:-}" ]; then
+              exit 0
+            fi
+
+            git fetch origin main:refs/remotes/origin/main
+
+            if ! git merge-base --is-ancestor "${CIRCLE_SHA1}" origin/main; then
+              echo "ERROR: ${CIRCLE_TAG} does not point to a commit contained in main."
+              exit 1
+            fi
       - aws-cli/setup:
           profile_name: 'default'
           role_arn: '${AWS_ROLE_ARN}'
           role_session_name: '<< parameters.aws-resource-name >>'
           session_duration: '900'
       - sam/install
-      - run:
-          name: "Decide environment (stack/function name)"
-          command: |
-            if [ "${CIRCLE_BRANCH}" = "main" ]; then
-              echo 'export STACK_NAME="pdf-pdf-to-jpeg-prod"' >> "$BASH_ENV"
-              echo 'export FUNCTION_NAME="pdf-pdf-to-jpeg-prod"' >> "$BASH_ENV"
-              echo 'export ENV_NAME="PROD-PY-3.12"' >> "$BASH_ENV"
-            else
-              echo 'export STACK_NAME="pdf-pdf-to-jpeg-stg"' >> "$BASH_ENV"
-              echo 'export FUNCTION_NAME="pdf-pdf-to-jpeg-stg"' >> "$BASH_ENV"
-              echo 'export ENV_NAME="STAGING-PY-3.12"' >> "$BASH_ENV"
-            fi
       - sam/build:
           build_arguments: "--parameter-overrides AwsS3UtilsLayerArn=<< parameters.layer-arn >>"
           template: 'template.yaml'
@@ -145,7 +168,7 @@ jobs:
             circleci run release plan 'Update release method' \
               --environment-name="${ENV_NAME}" \
               --component-name='app' \
-              --target-version='1'
+              --target-version="${RELEASE_VERSION}"
       - sam/deploy:
           stack_name: "${STACK_NAME}"
           arguments: >-
@@ -153,16 +176,18 @@ jobs:
             --parameter-overrides
             AwsS3UtilsLayerArn=<< parameters.layer-arn >>
             FunctionName=${FUNCTION_NAME}
+            ReleaseVersion=${RELEASE_VERSION}
+            GitRevision=${GIT_REVISION}
       - run:
           name: "Update deploy marker: SUCCESS"
           command: |
-            circleci run release update 'Update release method' \
+            circleci run release update 'Update release method #5210' \
               --status=SUCCESS
           when: on_success
       - run:
           name: "Update deploy marker: FAILED"
           command: |
-            circleci run release update 'Update release method' \
+            circleci run release update 'Update release method #5210' \
               --status=FAILED
           when: on_fail
   yamllint:
@@ -182,12 +207,20 @@ workflows:
   version: '2.1'
   build:
     jobs:
-      - bandit
-      - black
-      - flake8
-      - isort
-      - yamllint
-      - trailing-whitespace
+      - bandit:
+          filters: &build-filters |
+            pipeline.git.branch
+            or pipeline.git.tag matches /^v[0-9]+\.[0-9]+\.[0-9]+$/
+      - black:
+          filters: *build-filters
+      - flake8:
+          filters: *build-filters
+      - isort:
+          filters: *build-filters
+      - yamllint:
+          filters: *build-filters
+      - trailing-whitespace:
+          filters: *build-filters
       - pytest:
           aws-resource-name: 'lambda_pdf_pdf-to-jpeg'
           context: 'aws-oidc'
@@ -198,9 +231,11 @@ workflows:
             - isort
             - yamllint
             - trailing-whitespace
+          filters: *build-filters
       - sam-build:
           aws-resource-name: 'lambda_shitadan_participant-list_sam'
           layer-arn: 'arn:aws:lambda:ap-northeast-1:808683561341:layer:aws-s3-utils-layer-prod:1'
           context: 'aws-oidc'
           requires:
             - pytest
+          filters: *build-filters

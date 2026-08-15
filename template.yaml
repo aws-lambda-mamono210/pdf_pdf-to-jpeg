@@ -15,6 +15,12 @@ Parameters:
   FunctionName:
     Type: String
     Description: 'Lambda function name (prod/stg)'
+  ReleaseVersion:
+    Type: String
+    Description: 'Application release version'
+  GitRevision:
+    Type: String
+    Description: 'Git commit revision'
 
 Resources:
   PdfPdfToJpegFunction:
@@ -23,6 +29,17 @@ Resources:
       FunctionName: !Ref FunctionName
       Handler: 'app.lambda_function.lambda_handler'
       CodeUri: .
+      AutoPublishAlias: 'live'
+      AutoPublishAliasAllProperties: true
+      Description: !Sub 'pdf-pdf-to-jpeg ${ReleaseVersion}'
+      VersionDescription: !Sub 'release=${ReleaseVersion}, git=${GitRevision}'
+      Environment:
+        Variables:
+          APP_VERSION: !Ref ReleaseVersion
+          GIT_REVISION: !Ref GitRevision
+      Tags:
+        ReleaseVersion: !Ref ReleaseVersion
+        GitRevision: !Ref GitRevision
       Layers:
         - !Ref AwsS3UtilsLayerArn
       Policies:
@@ -33,7 +50,7 @@ Resources:
 
 Outputs:
   LambdaFunctionArn:
-    Description: "ARN of the Lambda function"
+    Description: 'ARN of the Lambda function'
     Value: !GetAtt PdfPdfToJpegFunction.Arn
     Export:
-      Name: !Sub "${AWS::StackName}-LambdaFunctionArn"
+      Name: !Sub '${AWS::StackName}-LambdaFunctionArn'
