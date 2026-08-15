@@ -2,9 +2,6 @@
 version: '2.1'
 
 executors:
-  bandit:
-    docker:
-      - image: 'public.ecr.aws/lambda/python:3.12'
   pytest:
     docker:
       - image: 'public.ecr.aws/lambda/python:3.12'
@@ -19,23 +16,24 @@ executors:
 
 orbs:
   aws-cli: 'circleci/aws-cli@5.2.0'
+  bandit: 'orbss/bandit@1.0.0'
   ruff: 'orbss/ruff@0.0.1'
   sam: 'circleci/aws-sam-serverless@6.1.0'
   yamllint: 'orbss/yamllint@0.0.4'
 
 jobs:
   bandit:
-    executor: 'bandit'
+    executor:
+      name: bandit/default
+      image: 'public.ecr.aws/lambda/python:3.12'
     steps:
       - checkout
-      - run:
-          name: Install bandit
-          command: pip3 install bandit[toml] --user
-      - run:
-          name: Execute bandit
-          command: bandit -c pyproject.toml -r .
-          environment:
-            PATH: "$PATH:/root/.local/bin"
+      - bandit/install:
+          extras: toml
+          version: '1.9.4'
+      - bandit/execute:
+          config-file: 'pyproject.toml'
+          targets: '.'
   ruff:
     executor:
       name: ruff/default
