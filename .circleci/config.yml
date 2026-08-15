@@ -5,15 +5,6 @@ executors:
   bandit:
     docker:
       - image: 'public.ecr.aws/lambda/python:3.12'
-  black:
-    docker:
-      - image: 'public.ecr.aws/lambda/python:3.12'
-  flake8:
-    docker:
-      - image: 'public.ecr.aws/lambda/python:3.12'
-  isort:
-    docker:
-      - image: 'public.ecr.aws/lambda/python:3.12'
   pytest:
     docker:
       - image: 'public.ecr.aws/lambda/python:3.12'
@@ -28,6 +19,7 @@ executors:
 
 orbs:
   aws-cli: 'circleci/aws-cli@5.2.0'
+  ruff: 'orbss/ruff@0.0.1'
   sam: 'circleci/aws-sam-serverless@6.1.0'
   yamllint: 'orbss/yamllint@0.0.4'
 
@@ -44,42 +36,21 @@ jobs:
           command: bandit -c pyproject.toml -r .
           environment:
             PATH: "$PATH:/root/.local/bin"
-  black:
-    executor: 'black'
+  ruff:
+    executor:
+      name: ruff/default
+      image: 'public.ecr.aws/lambda/python:3.12'
     steps:
       - checkout
-      - run:
-          name: Install black
-          command: pip3 install black --user
-      - run:
-          name: Run black check
-          command: black --check --diff .
-          environment:
-            PATH: "$PATH:/root/.local/bin"
-  flake8:
-    executor: 'flake8'
-    steps:
-      - checkout
-      - run:
-          name: Install flake8
-          command: pip3 install flake8 flake8-docstrings flake8-pyproject --user
-      - run:
-          name: Execute flake8
-          command: flake8
-          environment:
-            PATH: "$PATH:/root/.local/bin"
-  isort:
-    executor: 'isort'
-    steps:
-      - checkout
-      - run:
-          name: Install isort
-          command: pip3 install isort --user
-      - run:
-          name: Execute isort
-          command: isort --check-only --diff .
-          environment:
-            PATH: "$PATH:/root/.local/bin"
+      - ruff/install:
+          version: '0.16.2'
+      - ruff/check:
+          color: always
+          targets: '__init__.py app tests'
+      - ruff/format:
+          color: always
+          mode: diff
+          targets: '__init__.py app tests'
   pytest:
     executor: 'pytest'
     parameters:
@@ -211,11 +182,7 @@ workflows:
           filters: &build-filters |
             pipeline.git.branch
             or pipeline.git.tag matches /^v[0-9]+\.[0-9]+\.[0-9]+$/
-      - black:
-          filters: *build-filters
-      - flake8:
-          filters: *build-filters
-      - isort:
+      - ruff:
           filters: *build-filters
       - yamllint:
           filters: *build-filters
@@ -226,9 +193,7 @@ workflows:
           context: 'aws-oidc'
           requires:
             - bandit
-            - black
-            - flake8
-            - isort
+            - ruff
             - yamllint
             - trailing-whitespace
           filters: *build-filters

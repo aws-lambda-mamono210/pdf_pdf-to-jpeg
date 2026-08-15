@@ -3,33 +3,20 @@ exclude_dirs = ['tests/unit']
 include_dirs = ['app']
 recursive = true
 
-[tool.black]
-line_length = 88
-target-version = ['py39', 'py310']
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.aws-sam
-  | \.git
-  | \.mypy_cache
-  | \.venv
-  | _build
-  | build
-  | dist
-)/
-'''
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = [
+    ".aws-sam",
+    "tests/unit/layer_code",
+]
 
-[tool.isort]
-profile = "black"
-line_length = 88
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-skip = [".aws-sam"]
+[tool.ruff.lint]
+select = ["E", "F", "W", "D", "I"]
+ignore = ["E402"]
 
-[tool.flake8]
+[tool.ruff.lint.pycodestyle]
 max-line-length = 120
-exclude = ['.git', '.aws-sam', './tests/unit/layer_code/']
-ignore = ['E402']
-docstring-convention = 'google'
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
